@@ -34,14 +34,11 @@
 
 #include <private/android_filesystem_config.h>
 #include "hardware/qemu_pipe.h"
-#include <runtime/runtime.h>
 
 #define LIB_PATH_PROPERTY   "rild.libpath"
 #define LIB_ARGS_PROPERTY   "rild.libargs"
 #define MAX_LIB_ARGS        16
-#define MAX_POLL_DEVICE_CNT 8
-#define REFERENCE_RIL_DEF_PATH "/system/lib/libreference-ril.so"
-#define REFERENCE_RIL_ZTE_PATH "/system/lib/libreference-ril-zte.so"
+
 static void usage(const char *argv0)
 {
     fprintf(stderr, "Usage: %s -l <ril impl library> [-- <args for impl library>]\n", argv0);
@@ -73,7 +70,6 @@ static struct RIL_Env s_rilEnv = {
     RIL_onUnsolicitedResponse,
     RIL_requestTimedCallback
 };
-static int s_poll_device_cnt = 0;
 
 extern void RIL_startEventLoop();
 
@@ -129,7 +125,7 @@ int main(int argc, char **argv)
     const RIL_RadioFunctions *funcs;
     char libPath[PROPERTY_VALUE_MAX];
     unsigned char hasLibArgs = 0;
-    int modem_type = UNKNOWN_MODEM;
+
     int i;
     const char *clientId = NULL;
     RLOGD("**RIL Daemon Started**");
@@ -160,37 +156,6 @@ int main(int argc, char **argv)
     }
     if (strncmp(clientId, "0", MAX_CLIENT_ID_LENGTH)) {
         RIL_setRilSocketName(strncat(rild, clientId, MAX_SOCKET_NAME_LENGTH));
-    }
-    //Wait for device ready.
-    if (rilLibPath == NULL) {
-		while(UNKNOWN_MODEM == modem_type){
-		    modem_type = runtime_3g_port_type();
-		    ALOGD("Couldn't find proper modem, retrying...");
-		    s_poll_device_cnt++;
-		    if (s_poll_device_cnt > MAX_POLL_DEVICE_CNT){
-				/*
-				*Maybe no device right now, start to monitor
-				*hotplug event later.
-				*/
-				start_uevent_monitor();
-				goto done;
-		    }
-		    sleep(5);
-		}
-    }
-
-    start_uevent_monitor();
-
-    switch (modem_type){
-		case ZTE_MODEM:
-		rilLibPath = REFERENCE_RIL_ZTE_PATH;
-		break;
-
-		case HUAWEI_MODEM:
-		case AMAZON_MODEM:
-		default:
-		rilLibPath = REFERENCE_RIL_DEF_PATH;
-		break;
     }
 
     if (rilLibPath == NULL) {
@@ -345,6 +310,7 @@ OpenLib:
 
     // Make sure there's a reasonable argv[0]
     rilArgv[0] = argv[0];
+
     funcs = rilInit(&s_rilEnv, argc, rilArgv);
     RLOGD("RIL_Init rilInit completed");
 
